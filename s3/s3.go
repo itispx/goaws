@@ -6,34 +6,33 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type Bucket struct {
-	Name   string `json:"name"`
-	Region string `json:"region"`
+	Name   *string `json:"name"`
+	Region *string `json:"region"`
 	Client *s3.Client
 }
 
-type NewSessionParams struct {
-	Region string
+type NewSessionInput struct {
+	Region *string
 }
 
-func NewSession(params *NewSessionParams) (*s3.Client, error) {
-	if params == nil {
-		return nil, fmt.Errorf("missing params")
+func NewSession(input *NewSessionInput) (*s3.Client, error) {
+	if input == nil {
+		return nil, fmt.Errorf("nil input")
 	}
-	if *params == (NewSessionParams{}) {
-		return nil, fmt.Errorf("empty params")
+	if *input == (NewSessionInput{}) {
+		return nil, fmt.Errorf("empty input")
 	}
-	if params.Region == "" {
-		return nil, fmt.Errorf("missing 'Region' param")
+	if input.Region == nil || *input.Region == "" {
+		return nil, fmt.Errorf("empty 'Region' param")
 	}
 
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(params.Region))
+	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(*input.Region))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load SDK config: %w", err)
 	}
@@ -44,7 +43,14 @@ func NewSession(params *NewSessionParams) (*s3.Client, error) {
 }
 
 func (b *Bucket) NewSession() (*s3.Client, error) {
-	svc, err := NewSession(&NewSessionParams{
+	if *b == (Bucket{}) {
+		return nil, fmt.Errorf("empty input")
+	}
+	if b.Region == nil || *b.Region == "" {
+		return nil, fmt.Errorf("empty 'Region' param")
+	}
+
+	svc, err := NewSession(&NewSessionInput{
 		Region: b.Region,
 	})
 	if err != nil {
@@ -56,35 +62,33 @@ func (b *Bucket) NewSession() (*s3.Client, error) {
 	return b.Client, nil
 }
 
-type ListBucketsParams struct {
+type ListBucketsInput struct {
 	SVC    *s3.Client
-	Region string
+	Region *string
 }
 
-func ListBuckets(params *ListBucketsParams) (*s3.ListBucketsOutput, error) {
-	if params == nil {
-		return nil, fmt.Errorf("missing params")
+func ListBuckets(input *ListBucketsInput) (*s3.ListBucketsOutput, error) {
+	if input == nil {
+		return nil, fmt.Errorf("nil input")
 	}
-	if params.SVC == nil {
-		return nil, fmt.Errorf("missing 'SVC' param")
+	if *input == (ListBucketsInput{}) {
+		return nil, fmt.Errorf("empty input")
 	}
-	if params.Region == "" {
-		return nil, fmt.Errorf("missing 'Region' param")
+	if input.Region == nil || *input.Region == "" {
+		return nil, fmt.Errorf("empty 'Region' param")
 	}
 
-	if params.SVC == nil {
+	if input.SVC == nil {
 		var err error
-		params.SVC, err = NewSession(&NewSessionParams{
-			Region: params.Region,
+		input.SVC, err = NewSession(&NewSessionInput{
+			Region: input.Region,
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	input := &s3.ListBucketsInput{}
-
-	resp, err := params.SVC.ListBuckets(context.TODO(), input)
+	resp, err := input.SVC.ListBuckets(context.TODO(), &s3.ListBucketsInput{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list buckets: %w", err)
 	}
@@ -92,11 +96,15 @@ func ListBuckets(params *ListBucketsParams) (*s3.ListBucketsOutput, error) {
 	return resp, nil
 }
 
-type BucketCreateParams struct {
+type BucketCreateInput struct {
 	*s3.CreateBucketInput
 }
 
-func (b *Bucket) Create(params *BucketCreateParams) (*s3.CreateBucketOutput, error) {
+func (b *Bucket) Create(input *BucketCreateInput) (*s3.CreateBucketOutput, error) {
+	if b.Name == nil || *b.Name == "" {
+		return nil, fmt.Errorf("empty 'Name' param")
+	}
+
 	if b.Client == nil {
 		_, err := b.NewSession()
 		if err != nil {
@@ -104,23 +112,30 @@ func (b *Bucket) Create(params *BucketCreateParams) (*s3.CreateBucketOutput, err
 		}
 	}
 
-	input := &s3.CreateBucketInput{}
-	if params != nil && params.CreateBucketInput != nil {
-		input = params.CreateBucketInput
+	if input == nil {
+		input = &BucketCreateInput{}
 	}
 
-	input.Bucket = aws.String(b.Name)
+	if input.CreateBucketInput == nil {
+		input.CreateBucketInput = &s3.CreateBucketInput{}
+	}
 
-	out, err := b.Client.CreateBucket(context.TODO(), input)
+	input.Bucket = b.Name
+
+	out, err := b.Client.CreateBucket(context.TODO(), input.CreateBucketInput)
 
 	return out, err
 }
 
-type BucketDeleteParams struct {
+type BucketDeleteInput struct {
 	*s3.DeleteBucketInput
 }
 
-func (b *Bucket) Delete(params *BucketDeleteParams) (*s3.DeleteBucketOutput, error) {
+func (b *Bucket) Delete(input *BucketDeleteInput) (*s3.DeleteBucketOutput, error) {
+	if b.Name == nil || *b.Name == "" {
+		return nil, fmt.Errorf("empty 'Name' param")
+	}
+
 	if b.Client == nil {
 		_, err := b.NewSession()
 		if err != nil {
@@ -128,25 +143,44 @@ func (b *Bucket) Delete(params *BucketDeleteParams) (*s3.DeleteBucketOutput, err
 		}
 	}
 
-	input := &s3.DeleteBucketInput{}
-	if params != nil && params.DeleteBucketInput != nil {
-		input = params.DeleteBucketInput
+	if input == nil {
+		input = &BucketDeleteInput{}
 	}
 
-	input.Bucket = aws.String(b.Name)
+	if input.DeleteBucketInput == nil {
+		input.DeleteBucketInput = &s3.DeleteBucketInput{}
+	}
 
-	out, err := b.Client.DeleteBucket(context.TODO(), input)
+	input.Bucket = b.Name
+
+	out, err := b.Client.DeleteBucket(context.TODO(), input.DeleteBucketInput)
 
 	return out, err
 }
 
-type BucketUploadObjectParams struct {
+type BucketUploadObjectInput struct {
 	File *[]byte
-	Key  string
+	Key  *string
 	*s3.PutObjectInput
 }
 
-func (b *Bucket) UploadObject(params *BucketUploadObjectParams) (*s3.PutObjectOutput, string, error) {
+func (b *Bucket) UploadObject(input *BucketUploadObjectInput) (*s3.PutObjectOutput, string, error) {
+	if b.Name == nil || *b.Name == "" {
+		return nil, "", fmt.Errorf("empty 'Name' param")
+	}
+	if input == nil {
+		return nil, "", fmt.Errorf("nil input")
+	}
+	if *input == (BucketUploadObjectInput{}) {
+		return nil, "", fmt.Errorf("empty input")
+	}
+	if input.File == nil {
+		return nil, "", fmt.Errorf("empty 'File' param")
+	}
+	if input.Key == nil || *input.Key == "" {
+		return nil, "", fmt.Errorf("empty 'Key' param")
+	}
+
 	if b.Client == nil {
 		_, err := b.NewSession()
 		if err != nil {
@@ -154,28 +188,41 @@ func (b *Bucket) UploadObject(params *BucketUploadObjectParams) (*s3.PutObjectOu
 		}
 	}
 
-	input := &s3.PutObjectInput{}
-	if params != nil && params.PutObjectInput != nil {
-		input = params.PutObjectInput
+	if input.PutObjectInput == nil {
+		input.PutObjectInput = &s3.PutObjectInput{
+			Key: input.Key,
+		}
 	}
 
-	input.Body = bytes.NewReader(*params.File)
-	input.Bucket = &b.Name
-	input.Key = &params.Key
+	input.Body = bytes.NewReader(*input.File)
+	input.Bucket = b.Name
 
-	out, err := b.Client.PutObject(context.TODO(), input)
+	out, err := b.Client.PutObject(context.TODO(), input.PutObjectInput)
 
-	url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", b.Name, b.Region, *input.Key)
+	url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", *b.Name, *b.Region, *input.Key)
 
 	return out, url, err
 }
 
-type BucketGetObjectParams struct {
-	Key string
+type BucketGetObjectInput struct {
+	Key *string
 	*s3.GetObjectInput
 }
 
-func (b *Bucket) GetObject(params *BucketGetObjectParams) (*s3.GetObjectOutput, error) {
+func (b *Bucket) GetObject(input *BucketGetObjectInput) (*s3.GetObjectOutput, error) {
+	if b.Name == nil || *b.Name == "" {
+		return nil, fmt.Errorf("empty 'Name' param")
+	}
+	if input == nil {
+		return nil, fmt.Errorf("nil input")
+	}
+	if *input == (BucketGetObjectInput{}) {
+		return nil, fmt.Errorf("empty input")
+	}
+	if input.Key == nil || *input.Key == "" {
+		return nil, fmt.Errorf("empty 'Key' param")
+	}
+
 	if b.Client == nil {
 		_, err := b.NewSession()
 		if err != nil {
@@ -183,25 +230,38 @@ func (b *Bucket) GetObject(params *BucketGetObjectParams) (*s3.GetObjectOutput, 
 		}
 	}
 
-	input := &s3.GetObjectInput{}
-	if params != nil && params.GetObjectInput != nil {
-		input = params.GetObjectInput
+	if input.GetObjectInput == nil {
+		input.GetObjectInput = &s3.GetObjectInput{
+			Key: input.Key,
+		}
 	}
 
-	input.Bucket = &b.Name
-	input.Key = &params.Key
+	input.Bucket = b.Name
 
-	out, err := b.Client.GetObject(context.TODO(), input)
+	out, err := b.Client.GetObject(context.TODO(), input.GetObjectInput)
 
 	return out, err
 }
 
-type BucketDeleteObjectParams struct {
-	Key string
+type BucketDeleteObjectInput struct {
+	Key *string
 	*s3.DeleteObjectInput
 }
 
-func (b *Bucket) DeleteObject(params *BucketDeleteObjectParams) (*s3.DeleteObjectOutput, error) {
+func (b *Bucket) DeleteObject(input *BucketDeleteObjectInput) (*s3.DeleteObjectOutput, error) {
+	if b.Name == nil || *b.Name == "" {
+		return nil, fmt.Errorf("empty 'Name' param")
+	}
+	if input == nil {
+		return nil, fmt.Errorf("nil input")
+	}
+	if *input == (BucketDeleteObjectInput{}) {
+		return nil, fmt.Errorf("empty input")
+	}
+	if input.Key == nil || *input.Key == "" {
+		return nil, fmt.Errorf("empty 'Key' param")
+	}
+
 	if b.Client == nil {
 		_, err := b.NewSession()
 		if err != nil {
@@ -209,27 +269,31 @@ func (b *Bucket) DeleteObject(params *BucketDeleteObjectParams) (*s3.DeleteObjec
 		}
 	}
 
-	input := &s3.DeleteObjectInput{}
-	if params != nil && params.DeleteObjectInput != nil {
-		input = params.DeleteObjectInput
+	if input.DeleteObjectInput == nil {
+		input.DeleteObjectInput = &s3.DeleteObjectInput{
+			Key: input.Key,
+		}
 	}
 
-	input.Bucket = aws.String(b.Name)
-	input.Key = aws.String(params.Key)
+	input.Bucket = b.Name
 
-	out, err := b.Client.DeleteObject(context.TODO(), input)
+	out, err := b.Client.DeleteObject(context.TODO(), input.DeleteObjectInput)
 
 	return out, err
 }
 
-type ListObjectsParams struct {
-	Prefix string
-	Page   string
-	Limit  int
+type ListObjectsInput struct {
+	Prefix     *string
+	StartAfter *string
+	Limit      *int
 	*s3.ListObjectsV2Input
 }
 
-func (b *Bucket) ListObjects(params *ListObjectsParams) (*s3.ListObjectsV2Output, error) {
+func (b *Bucket) ListObjects(input *ListObjectsInput) (*s3.ListObjectsV2Output, error) {
+	if b.Name == nil || *b.Name == "" {
+		return nil, fmt.Errorf("empty 'Name' param")
+	}
+
 	if b.Client == nil {
 		_, err := b.NewSession()
 		if err != nil {
@@ -237,69 +301,89 @@ func (b *Bucket) ListObjects(params *ListObjectsParams) (*s3.ListObjectsV2Output
 		}
 	}
 
-	input := &s3.ListObjectsV2Input{}
-	if params != nil && params.ListObjectsV2Input != nil {
-		input = params.ListObjectsV2Input
+	if input == nil {
+		input = &ListObjectsInput{}
 	}
 
-	input.Bucket = aws.String(b.Name)
-	if params.Prefix != "" {
-		input.Prefix = aws.String(params.Prefix)
+	if input.ListObjectsV2Input == nil {
+		input.ListObjectsV2Input = &s3.ListObjectsV2Input{}
 	}
 
-	if params.Page != "" {
-		input.StartAfter = aws.String(params.Page)
-	}
+	input.Bucket = b.Name
 
-	if params.Limit != 0 {
-		limit := int32(params.Limit)
-
+	if input.Limit != nil {
+		limit := int32(*input.Limit)
 		input.MaxKeys = &limit
 	}
 
-	out, err := b.Client.ListObjectsV2(context.TODO(), input)
+	out, err := b.Client.ListObjectsV2(context.TODO(), input.ListObjectsV2Input)
 
 	return out, err
 }
 
-type PresignGetParams struct {
-	Key      string
-	Duration time.Duration
+type PresignGetInput struct {
+	Key      *string
+	Duration *time.Duration
 	*s3.PresignOptions
 }
 
-func (b *Bucket) PresignGet(params *PresignGetParams) (*v4.PresignedHTTPRequest, error) {
+func (b *Bucket) PresignGet(input *PresignGetInput) (*v4.PresignedHTTPRequest, error) {
+	if b.Name == nil || *b.Name == "" {
+		return nil, fmt.Errorf("empty 'Name' param")
+	}
+	if input == nil {
+		return nil, fmt.Errorf("nil input")
+	}
+	if *input == (PresignGetInput{}) {
+		return nil, fmt.Errorf("empty input")
+	}
+	if input.Key == nil || *input.Key == "" {
+		return nil, fmt.Errorf("empty 'Key' param")
+	}
+	if input.Duration == nil {
+		return nil, fmt.Errorf("empty 'Duration' param")
+	}
+
 	if b.Client == nil {
 		_, err := b.NewSession()
 		if err != nil {
 			return nil, err
 		}
 	}
-
-	input := &s3.PresignOptions{}
-	if params != nil && params.PresignOptions != nil {
-		input = params.PresignOptions
-	}
-
-	input.Expires = params.Duration
 
 	presignClient := s3.NewPresignClient(b.Client)
 
 	out, err := presignClient.PresignGetObject(context.TODO(), &s3.GetObjectInput{
-		Bucket: aws.String(b.Name),
-		Key:    aws.String(params.Key),
-	}, s3.WithPresignExpires(params.Duration))
+		Bucket: b.Name,
+		Key:    input.Key,
+	}, s3.WithPresignExpires(*input.Duration))
 
 	return out, err
 }
 
-type PresignPutParams struct {
-	Key      string
-	Duration time.Duration
+type PresignPutInput struct {
+	Key      *string
+	Duration *time.Duration
 	*s3.PresignOptions
 }
 
-func (b *Bucket) PresignPut(params *PresignPutParams) (*v4.PresignedHTTPRequest, error) {
+func (b *Bucket) PresignPut(input *PresignPutInput) (*v4.PresignedHTTPRequest, error) {
+	if b.Name == nil || *b.Name == "" {
+		return nil, fmt.Errorf("empty 'Name' param")
+	}
+	if input == nil {
+		return nil, fmt.Errorf("nil input")
+	}
+	if *input == (PresignPutInput{}) {
+		return nil, fmt.Errorf("empty input")
+	}
+	if input.Key == nil || *input.Key == "" {
+		return nil, fmt.Errorf("empty 'Key' param")
+	}
+	if input.Duration == nil {
+		return nil, fmt.Errorf("empty 'Duration' param")
+	}
+
 	if b.Client == nil {
 		_, err := b.NewSession()
 		if err != nil {
@@ -307,19 +391,12 @@ func (b *Bucket) PresignPut(params *PresignPutParams) (*v4.PresignedHTTPRequest,
 		}
 	}
 
-	input := &s3.PresignOptions{}
-	if params != nil && params.PresignOptions != nil {
-		input = params.PresignOptions
-	}
-
-	input.Expires = params.Duration
-
 	presignClient := s3.NewPresignClient(b.Client)
 
 	out, err := presignClient.PresignPutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(b.Name),
-		Key:    aws.String(params.Key),
-	}, s3.WithPresignExpires(params.Duration))
+		Bucket: b.Name,
+		Key:    input.Key,
+	}, s3.WithPresignExpires(*input.Duration))
 
 	return out, err
 }
