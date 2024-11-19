@@ -3,7 +3,7 @@ package goaws_test
 import (
 	"testing"
 
-	"github.com/itispx/goaws/goaws"
+	"github.com/itispx/goaws"
 )
 
 func TestString(t *testing.T) {
